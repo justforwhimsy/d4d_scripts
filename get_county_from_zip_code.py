@@ -1,5 +1,5 @@
 import requests
-
+#This was used to test out requesting county information using Googles geocode API
 def main():
 	url = 'http://maps.googleapis.com/maps/api/geocode/json?address='
 	zip_code = 97211

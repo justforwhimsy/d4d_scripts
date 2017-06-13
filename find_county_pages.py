@@ -1,117 +1,124 @@
 import facepy as fp
-import pprint
 import json
 import _mysql
 import csv
-import time
 import requests
-token='EAACEdEose0cBAPsl349gnWVwyZCt22ZBvmFj9aMyGVmIiVWCXLe7xQ5AYFFO6eGYcryZBZAUKDrUSq2DHi9gTiW3mJhzQirGEmpoqQM5MPVfIvS0AP3BUeoPCBWsd9kBDAdbHHePZBSaZCNOZA92jE1qbp6g3TK09UqoEhfQihTmBU9FpdBkZBZCtAs9YBuiLqCUZD'
-pp = pprint.PrettyPrinter()
+import time
+import logging
+
+token='FACEBOOK TOKEN'
+google_key = 'GOOGLE DEVELOPER KEY'
 graph = fp.GraphAPI(token)
 counties_visited = {}
+
+logger = logging.getLogger()
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.ERROR)
+
 def main():
     with open('us_counties.csv') as f:
         reader = csv.DictReader(f)
-        count = 0
         #Iterate over each county in the CSV and collect page results from FB
-        for row in reader: 
+        for row in reader:
             county = row['county']
-
+            count = 0
             # There are multiple counties across the country with the same name, we don't need to search for the same thing multiple times
             if county not in counties_visited:
 
-                #a dictionary containing search result data
+                #a dictionary containing search result data.
                 results = get_search_results(county)
 
-                #Each item in the list contains a dictiory object containing information on the page.
-                #Iterate over each page of results. For each results page, iterate over the FB pages and compare their states
-                count=0
+                #Iterate over each page of results. For each results page, iterate over the FB pages and verify their county before storing them in a database
                 for items in results:
                     pages = items['data']
                     for page in pages:
-                        # print(page)
-                        page_id = page['id']
-                        page_name = page['name']
-                        page_category = page['category']
-                #         page_url = "get page url"
-                #       #TODO Get the state for the page and verify it matches the county we are looking for.
+                        page_id, page_name, page_category = page['id'], page['name'],page['category']
+                        # page_name =
+                        # page_category =
                         try:
                             fb_page=get_page(page_id)
-                            # print(fb_page)
                             try:
                                 page_url = fb_page['link']
-         
-                            except Exception as e:
-                                print("Failed to get url for " + page_name)
-                                print(e)
-                            
-                            if 'location' in fb_page:
-                                print(fb_page['location'])
-                                try:
-                                    page_state = fb_page['location']['state']
-                                    page_city = fb_page['location']['city']
-                                    true_county = get_real_county_by_state(page_city + ',' + page_state)
-                                except Exception as e:
-                                    print("Failed to get city and/or state for " + page_name)
-                                    print(e)
 
-                                else:
-                                    try:
+                            except Exception as e:
+                                logger.error("Failed to get url for " + page_name)
+                                logger.error(e)
+                                # logger.error('page data: ' + fb_page)
+
+                            if 'location' in fb_page: #if a location does exist on the page, verify what state / county it's in
+                                try:
+                                    page_city = fb_page['location']['city']
+                                    if ', ' in page_city:
+                                        page_city, page_state = page_city.split(', ')
+                                    else:
+                                        page_state = fb_page['location']['state']
+                                    true_county = get_real_county_by_state(page_city + ',' + page_state)
+
+                                except Exception as e:
+                                    logger.error("Failed to get city and/or state for " + page_name)
+                                    logger.error(e)
+                                    # logger.error(fb_page['location'])
+
+                                    try: # If the location did not include a city / state address, look for a postal code
                                         page_zip = fb_page['location']['zip']
                                         true_county, page_state = get_real_county_by_zip(page_zip)
                                     except Exception as e:
-                                        print("Failed to get zip code for " + page_name)
-                                        print(e)        
+                                        logger.error("Failed to get zip code for " + page_name)
+                                        logger.error(e)
+                                        # logger.error(fb_page['location'])
+                            insert_page(page_id, page_name, page_url, county, page_state, true_county)
 
-                            # print(true_county + " : " + page_state)
                         except Exception as e:
-                            print("Failed to get page for " + page_id)
-                            print(e)
-                        
-                #     count +=1
-                #     #break out of the loop after running through 4 pages of results. TODO figure out how to limit the pages returned from the getgo
-                #     if count == 4:
-                #         break
-                    break
-                break
-                time.sleep(120)
-            break
+                            logger.error("Failed to get page for " + page_id)
+                            logger.error(e)
+
+                        #break out of the loop after running through 4 pages of results. TODO figure out how to limit the pages returned from the getgo
+                    if count == 4:
+                        break
+
+                    count +=1
+
+                time.sleep(60)
+
             counties_visited[county] = row['state']
-    print(count)
 
 
 def get_real_county_by_state(address):
-    url = 'http://maps.googleapis.com/maps/api/geocode/json?address='
+    url = 'https://maps.googleapis.com/maps/api/geocode/json?address='
     try:
-        r = requests.get(url+str(address))
+        r = requests.get(url+str(address)+ "&key=" + google_key)
         r_json = r.json()
-        print(r_json)
-        county = r_json['results'][0]['address_components'][1]['long_name']
-        state = r_json['results'][0]['address_components'][2]['short_name']
+        county = r_json['results'][0]['address_components'][1]['short_name'] #should collect the county name. Some places don't have counties, some results don't follow the same format
+
+        state = r_json['results'][0]['formatted_address'].split(', ')[1] #get the second value in the formatted address which will be the state
     except Exception as e:
-        print("Error occurred while requesting the url " + url + address + "\n")
-        print(e)
+        logger.error("Error occurred while requesting the url " + url + address + "\n")
+        logger.error(e)
     return county
 
 def get_real_county_by_zip(address):
-    url = 'http://maps.googleapis.com/maps/api/geocode/json?address='
+    url = 'https://maps.googleapis.com/maps/api/geocode/json?address='
     try:
-        r = requests.get(url+str(address))
+        r = requests.get(url+str(address)+ "&key=" + google_key)
         r_json = r.json()
-        county = r_json['results'][0]['address_components'][2]['long_name']
-        state = r_json['results'][0]['address_components'][3]['short_name']
+        county = r_json['results'][0]['address_components'][2]['short_name']
+        if not('County' in county or 'Parish' in county):
+            county = None
+        state = r_json['results'][0]['formatted_address'].split(', ')[1] #get the second value in the formatted address which will be the state
     except Exception as e:
-        print("Error occurred while requesting the url " + url + address + "\n")
-        print(e)
-    print(county + " ")
+        logger.error("Error occurred while requesting the url " + url + address + "\n")
+        logger.error(e)
     return (county,state)
 
 def get_county(url, zip_code):
     try:
         r = requests.get(url+zip_code)
     except Exception as e:
-        print("Error occurred while requesting the url " + url + zip_code + "\n")
-        print(e)
+        logger.error("Error occurred while requesting the url " + url + zip_code + "\n")
+        logger.error(e)
     return r
 
 #returns a generator of search results
@@ -130,9 +137,11 @@ def get_page(page_id):
     return page
 
 def insert_page(page_id, page_name, page_url, search_query, page_state = None, page_county = None):
-    db = _mysql.connect("localhost", "iris", "phoebebooboo", "public_county_pages")
-    query = """insert into fb_pages (id, page_name, page_url, page_state, page_county) Values('%s', '%s', '%s', '%s', '%s', '%s')""" % (page_id, page_name, page_url, page_state, page_county, search_query)
-    db.insert(query)
+    # user = input('Enter db user: ')
+    # password = input('Enter db user password: ')
+    db = _mysql.connect("localhost", 'USER', 'PASSWORD', "DATABASE")
+    query = '''INSERT IGNORE INTO fb_pages (id, page_name, page_url, page_state, page_county, search_query) VALUES("%s","%s","%s","%s","%s","%s")''' % (page_id, page_name, page_url, page_state, page_county, search_query)
+    db.query(query)
 
 if __name__ == "__main__":
     main()

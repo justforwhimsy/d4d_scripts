@@ -1,6 +1,6 @@
 import _mysql
 
-db = _mysql.connect("localhost", "iris", "phoebebooboo", "public_county_pages")
+db = _mysql.connect("localhost", "user", "password", "public_county_pages")
 
 
 
