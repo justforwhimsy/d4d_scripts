@@ -76,10 +76,10 @@ def main():
                             logger.error(e)
 
                         #break out of the loop after running through 4 pages of results. TODO figure out how to limit the pages returned from the getgo
+                    count +=1
                     if count == 4:
                         break
 
-                    count +=1
 
                 time.sleep(60)
 
