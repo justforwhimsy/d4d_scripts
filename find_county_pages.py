@@ -17,6 +17,7 @@ formatter = logging.Formatter('%(asctime)s %(name)-12s %(levelname)-8s %(message
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.ERROR)
+db = _mysql.connect("localhost", 'USER', 'PASSWORD', "DATABASE")
 
 def main():
     with open('us_counties.csv') as f:
@@ -55,7 +56,7 @@ def main():
                                         page_city, page_state = page_city.split(', ')
                                     else:
                                         page_state = fb_page['location']['state']
-                                    true_county = get_real_county_by_state(page_city + ',' + page_state)
+                                    true_county = get_real_county_by_state(page_city, page_state)
 
                                 except Exception as e:
                                     logger.error("Failed to get city and/or state for " + page_name)
@@ -86,45 +87,27 @@ def main():
             counties_visited[county] = row['state']
 
 
-def get_real_county_by_state(address):
-    url = 'https://maps.googleapis.com/maps/api/geocode/json?address='
+def get_real_county_by_state(city, state):
     try:
-        r = requests.get(url+str(address)+ "&key=" + google_key)
-        r_json = r.json()
-        county = r_json['results'][0]['address_components'][1]['short_name'] #should collect the county name. Some places don't have counties, some results don't follow the same format
-
-        state = r_json['results'][0]['formatted_address'].split(', ')[1] #get the second value in the formatted address which will be the state
+        query = '''Select county from fb_pages where state = %s and primar_city = %s''' % state, city
+        county = db.query(query)
     except Exception as e:
-        logger.error("Error occurred while requesting the url " + url + address + "\n")
+        logger.error("Error occurred while searching for county of " city + ", " + state + "\n")
         logger.error(e)
     return county
 
-def get_real_county_by_zip(address):
-    url = 'https://maps.googleapis.com/maps/api/geocode/json?address='
+def get_real_county_by_zip(zip):
     try:
-        r = requests.get(url+str(address)+ "&key=" + google_key)
-        r_json = r.json()
-        county = r_json['results'][0]['address_components'][2]['short_name']
-        if not('County' in county or 'Parish' in county):
-            county = None
-        state = r_json['results'][0]['formatted_address'].split(', ')[1] #get the second value in the formatted address which will be the state
+        query = '''Select county, state from fb_pages where zip = %s''' % zip
+        county, state = db.query(query).split(',')
     except Exception as e:
-        logger.error("Error occurred while requesting the url " + url + address + "\n")
+        logger.error("Error occurred while searching for the county by zip: " + zip +  + "\n")
         logger.error(e)
     return (county,state)
-
-def get_county(url, zip_code):
-    try:
-        r = requests.get(url+zip_code)
-    except Exception as e:
-        logger.error("Error occurred while requesting the url " + url + zip_code + "\n")
-        logger.error(e)
-    return r
 
 #returns a generator of search results
 def get_search_results(term):
     pages = graph.search(term, 'page',True)
-
     return pages
 
 def get_page_state(page_id):
@@ -139,7 +122,7 @@ def get_page(page_id):
 def insert_page(page_id, page_name, page_url, search_query, page_state = None, page_county = None):
     # user = input('Enter db user: ')
     # password = input('Enter db user password: ')
-    db = _mysql.connect("localhost", 'USER', 'PASSWORD', "DATABASE")
+
     query = '''INSERT IGNORE INTO fb_pages (id, page_name, page_url, page_state, page_county, search_query) VALUES("%s","%s","%s","%s","%s","%s")''' % (page_id, page_name, page_url, page_state, page_county, search_query)
     db.query(query)
 
