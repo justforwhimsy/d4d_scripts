@@ -35,7 +35,13 @@ Packages used:
 - json (not necessary for basic functionality)
 - _mysql (this package was used since I wrote this on Windows. There are other packages that may work better depending on OS) http://mysql-python.sourceforge.net/MySQLdb.html
 
-Google API - This is used to verify the address of a Facebook page. There is a 50k daily request limit. Data is returned in a dictionary of array values that will not always have the same structure. This has resulted in some values being incorrect. If there is a more reliable tool or package that can be downloaded, that may be a better solution.
 
 # public_county_pages_fb_pages.sql
-This is as far as the script got before the Google API said 'Stawp giving us requests today!' This made it through the Alabama counties and some of the Alaskan boroughs. Some of the data is stored wrong. This may be due to the way information is collected from the google API.
+This contains ~150K facebook pages associated with counties throughout the U.S. There may be a few individual counties, boroughs or parishes missing that could be added, but overall, most counties should have some pages associated with them. 
+Columns
+- id: Facebook page id
+- page_name: The name of the Facebook page
+- page_url: The url to access the Facebook page
+- page_state: This is the verified page state. If a state could not be found, it defaults to 'NA'
+- verified_county: The verified county based on the location stored on the Facebook page
+- search_county: The county used in search to find the Facebook page. Sometimes this is not the same county as is verified.
